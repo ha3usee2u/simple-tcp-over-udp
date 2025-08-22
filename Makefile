@@ -33,3 +33,32 @@ $(TARGET_SERVER): server.o protocol.o
 # 清除所有編譯產物
 clean:
 	rm -f *.o $(TARGET_CLIENT) $(TARGET_SERVER)
+	rm -f logs/* valgrind_logs/*
+
+run-server:
+	./server
+
+run-client:
+	./client
+
+run-clients:
+	@echo "🧹 清除 logs 中的舊檔案..."
+	@mkdir -p logs
+	@rm -f logs/*
+	@echo "🚀 啟動 $(N) 個 client..."
+	@for i in $$(seq 1 $(N)); do \
+		./client > logs/client$$i.log & \
+    done
+
+valgrind-server:
+	valgrind --leak-check=full ./server
+
+valgrind-clients:
+	@mkdir -p valgrind_logs
+	@rm -f valgrind_logs/*
+	@for i in $$(seq 1 $(N)); do \
+		valgrind --leak-check=full --log-file=valgrind_logs/client$$i.log ./client& \
+	done
+	@echo "✅ 啟動 $(N) 個 client 並記錄 Valgrind log 至 valgrind_logs/"
+
+
