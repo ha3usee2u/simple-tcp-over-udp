@@ -1,18 +1,22 @@
 #pragma once
-#include <vector>
-#include <netinet/in.h> 
-#include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <unistd.h>
+#include <vector>
 
 #include "connection.hpp"
 #include "packet.hpp"
 
-class Protocol {
+class Protocol
+{
 public:
-    Packet handleHandshake(const Packet &pkt, ConnectionState &state, const std::string &client_key);
+    Packet handleHandshake(const Packet &pkt,
+                           ConnectionState &state,
+                           const std::string &client_key);
     Packet handleExpression(const std::string &expr, ConnectionState &state);
-    std::vector<Packet> handleFileRequest(const std::string &filename, ConnectionState &state);
+    std::vector<Packet> handleFileRequest(const std::string &filename,
+                                          ConnectionState &state);
 
     void sendFileWithCongestionControl(const std::string &filename,
                                        ConnectionState &state,
@@ -24,8 +28,8 @@ private:
     Packet makeDataPacket(ConnectionState &state, const std::string &payload);
     Packet makeEOFPacket(ConnectionState &state);
 
-    void sendPacket(int sockfd, const Packet &pkt, const sockaddr_in &client_addr);
+    void sendPacket(int sockfd,
+                    const Packet &pkt,
+                    const sockaddr_in &client_addr);
     bool receivePacket(int sockfd, Packet &pkt);
 };
-
-

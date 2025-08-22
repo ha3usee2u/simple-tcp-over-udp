@@ -96,7 +96,8 @@ int main()
             break;
 
         case PacketType::FILE_REQ: {
-            protocol.sendFileWithCongestionControl(pkt.payload, state, sock, client_addr);
+            protocol.sendFileWithCongestionControl(pkt.payload, state, sock,
+                                                   client_addr);
             continue;
         }
 

@@ -1,14 +1,14 @@
 #include "protocol.hpp"
 #include "packet.hpp"
 
-#include <fstream>
-#include <sstream>
-#include <stdexcept>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 
 
 class ExpressionParser
@@ -146,7 +146,8 @@ std::vector<Packet> Protocol::handleFileRequest(const std::string &filename,
     return packets;
 }
 
-Packet Protocol::makeErrorPacket(ConnectionState &state, const std::string &msg) {
+Packet Protocol::makeErrorPacket(ConnectionState &state, const std::string &msg)
+{
     Packet p;
     p.seq = state.server_seq++;
     p.ack = state.client_seq;
@@ -156,7 +157,9 @@ Packet Protocol::makeErrorPacket(ConnectionState &state, const std::string &msg)
     return p;
 }
 
-Packet Protocol::makeDataPacket(ConnectionState &state, const std::string &payload) {
+Packet Protocol::makeDataPacket(ConnectionState &state,
+                                const std::string &payload)
+{
     Packet p;
     p.seq = state.server_seq++;
     p.ack = state.client_seq;
@@ -166,7 +169,8 @@ Packet Protocol::makeDataPacket(ConnectionState &state, const std::string &paylo
     return p;
 }
 
-Packet Protocol::makeEOFPacket(ConnectionState &state) {
+Packet Protocol::makeEOFPacket(ConnectionState &state)
+{
     Packet p;
     p.seq = state.server_seq++;
     p.ack = state.client_seq;
@@ -176,18 +180,24 @@ Packet Protocol::makeEOFPacket(ConnectionState &state) {
     return p;
 }
 
-void Protocol::sendPacket(int sockfd, const Packet &pkt, const sockaddr_in &client_addr) {
+void Protocol::sendPacket(int sockfd,
+                          const Packet &pkt,
+                          const sockaddr_in &client_addr)
+{
     std::string raw = pkt.serialize();
-    sendto(sockfd, raw.c_str(), raw.size(), 0,
-           (sockaddr *) &client_addr, sizeof(client_addr));
+    sendto(sockfd, raw.c_str(), raw.size(), 0, (sockaddr *) &client_addr,
+           sizeof(client_addr));
 }
 
-bool Protocol::receivePacket(int sockfd, Packet &pkt) {
+bool Protocol::receivePacket(int sockfd, Packet &pkt)
+{
     char buffer[4096];
     sockaddr_in from_addr;
     socklen_t len = sizeof(from_addr);
-    ssize_t n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (sockaddr *) &from_addr, &len);
-    if (n <= 0) return false;
+    ssize_t n = recvfrom(sockfd, buffer, sizeof(buffer), 0,
+                         (sockaddr *) &from_addr, &len);
+    if (n <= 0)
+        return false;
     pkt = Packet::deserialize(std::string(buffer, n));
     return true;
 }
@@ -220,10 +230,11 @@ void Protocol::sendFileWithCongestionControl(const std::string &filename,
 
         // 等待 ACKs 並顯示 debug 資訊
         for (Packet &p : inFlight) {
-            std::cout << "📤 傳送封包 seq=" << p.seq << " cwnd=" << cwnd << "\n";
+            std::cout << "📤 傳送封包 seq=" << p.seq << " cwnd=" << cwnd
+                      << "\n";
 
             Packet ack;
-        
+
             if (receivePacket(sockfd, ack) && ack.type == PacketType::ACK) {
                 std::cout << "✅ ACK received for seq=" << p.seq << "\n";
                 state.client_seq = ack.seq;

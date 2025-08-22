@@ -92,9 +92,10 @@ void handleFileRequest(int sock,
         }
 
         if (p.type == PacketType::FILE_DATA) {
-            std::cout << "📥 收到封包：" << to_string(p.type) << " seq=" << p.seq << "\n";
+            std::cout << "📥 收到封包：" << to_string(p.type)
+                      << " seq=" << p.seq << "\n";
             Packet ack = {p.seq + static_cast<uint32_t>(p.payload.size()),
-                        p.seq, 1024, PacketType::DATA_ACK, ""};
+                          p.seq, 1024, PacketType::DATA_ACK, ""};
             sendPacket(sock, server_addr, ack);
         }
 
