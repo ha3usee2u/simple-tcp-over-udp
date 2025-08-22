@@ -96,14 +96,10 @@ int main()
             break;
 
         case PacketType::FILE_REQ: {
-            auto packets = protocol.handleFileRequest(pkt.payload, state);
-            for (auto &p : packets) {
-                std::string serialized = p.serialize();
-                sendto(sock, serialized.c_str(), serialized.size(), 0,
-                       (sockaddr *) &client_addr, len);
-            }
+            protocol.sendFileWithCongestionControl(pkt.payload, state, sock, client_addr);
             continue;
         }
+
 
         case PacketType::DATA_ACK:
             std::cout << "📬 收到 client ACK：" << pkt.ack << "\n";

@@ -34,6 +34,7 @@ $(TARGET_SERVER): server.o protocol.o
 clean:
 	rm -f *.o $(TARGET_CLIENT) $(TARGET_SERVER)
 	rm -f logs/* valgrind_logs/*
+	rm -f downloads/*
 
 run-server:
 	./server
