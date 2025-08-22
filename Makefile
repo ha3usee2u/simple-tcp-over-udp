@@ -61,4 +61,5 @@ valgrind-clients:
 	done
 	@echo "✅ 啟動 $(N) 個 client 並記錄 Valgrind log 至 valgrind_logs/"
 
-
+clang-format:
+	clang-format -i $(SRC_CLIENT) $(SRC_SERVER) $(HDR)

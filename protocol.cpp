@@ -1,22 +1,24 @@
 #include "protocol.hpp"
-#include "packet.hpp"
+
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 
-class ExpressionParser {
-public:
-    ExpressionParser(const std::string& expr) : input(expr), pos(0) {}
+#include "packet.hpp"
 
-    double parse() {
-        return parseExpression();
-    }
+class ExpressionParser
+{
+public:
+    ExpressionParser(const std::string &expr) : input(expr), pos(0) {}
+
+    double parse() { return parseExpression(); }
 
 private:
     std::string input;
     size_t pos;
 
-    double parseExpression() {
+    double parseExpression()
+    {
         double value = parseTerm();
         while (match('+') || match('-')) {
             char op = input[pos - 1];
@@ -26,7 +28,8 @@ private:
         return value;
     }
 
-    double parseTerm() {
+    double parseTerm()
+    {
         double value = parseFactor();
         while (match('*') || match('/')) {
             char op = input[pos - 1];
@@ -36,7 +39,8 @@ private:
         return value;
     }
 
-    double parseFactor() {
+    double parseFactor()
+    {
         if (match('(')) {
             double value = parseExpression();
             match(')');
@@ -45,14 +49,18 @@ private:
         return parseNumber();
     }
 
-    double parseNumber() {
+    double parseNumber()
+    {
         size_t start = pos;
-        while (pos < input.size() && (isdigit(input[pos]) || input[pos] == '.')) pos++;
+        while (pos < input.size() && (isdigit(input[pos]) || input[pos] == '.'))
+            pos++;
         return std::stod(input.substr(start, pos - start));
     }
 
-    bool match(char expected) {
-        while (pos < input.size() && isspace(input[pos])) pos++;
+    bool match(char expected)
+    {
+        while (pos < input.size() && isspace(input[pos]))
+            pos++;
         if (pos < input.size() && input[pos] == expected) {
             pos++;
             return true;
@@ -61,7 +69,10 @@ private:
     }
 };
 
-Packet Protocol::handleHandshake(const Packet& pkt, ConnectionState& state, const std::string& client_key) {
+Packet Protocol::handleHandshake(const Packet &pkt,
+                                 ConnectionState &state,
+                                 const std::string &client_key)
+{
     Packet syn_ack;
     syn_ack.seq = 200;
     syn_ack.ack = pkt.seq;
@@ -75,8 +86,9 @@ Packet Protocol::handleHandshake(const Packet& pkt, ConnectionState& state, cons
     return syn_ack;
 }
 
-
-std::vector<Packet> Protocol::handleFileRequest(const std::string& filename, ConnectionState& state) {
+std::vector<Packet> Protocol::handleFileRequest(const std::string &filename,
+                                                ConnectionState &state)
+{
     std::vector<Packet> packets;
     std::string base_dir = "./files/";
     std::ifstream file(base_dir + filename);
@@ -113,7 +125,9 @@ std::vector<Packet> Protocol::handleFileRequest(const std::string& filename, Con
     return packets;
 }
 
-Packet Protocol::handleExpression(const std::string& expr, ConnectionState& state) {
+Packet Protocol::handleExpression(const std::string &expr,
+                                  ConnectionState &state)
+{
     ExpressionParser parser(expr);
     double result = parser.parse();
 
@@ -125,4 +139,3 @@ Packet Protocol::handleExpression(const std::string& expr, ConnectionState& stat
     response.payload = std::to_string(result);
     return response;
 }
-

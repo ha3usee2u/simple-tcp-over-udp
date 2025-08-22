@@ -1,6 +1,7 @@
 # 📦 simple-tcp-over-udp
 
-模擬 TCP 功能的 UDP 通訊框架，支援三次握手、算式請求、檔案傳輸與 ACK 回應。適合用於學習網路協定、封包設計與 client-server 架構。
+模擬 TCP 功能的 UDP 通訊框架，支援三次握手、算式請求、檔案傳輸與 ACK 回應。
+適合用於學習網路協定、封包設計與 client-server 架構。
 
 ---
 

@@ -1,32 +1,38 @@
-#include "packet.hpp"
-#include <iostream>
-#include <string>
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <vector>
+
 #include <chrono>
-#include <fstream>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "packet.hpp"
 namespace fs = std::filesystem;
 
-void sendPacket(int sock, sockaddr_in& server_addr, const Packet& pkt) {
+void sendPacket(int sock, sockaddr_in &server_addr, const Packet &pkt)
+{
     std::string raw = pkt.serialize();
-    sendto(sock, raw.c_str(), raw.size(), 0, (sockaddr*)&server_addr, sizeof(server_addr));
+    sendto(sock, raw.c_str(), raw.size(), 0, (sockaddr *) &server_addr,
+           sizeof(server_addr));
 }
 
-Packet receivePacket(int sock) {
+Packet receivePacket(int sock)
+{
     char buffer[4096];
     sockaddr_in from_addr;
     socklen_t len = sizeof(from_addr);
-    ssize_t n = recvfrom(sock, buffer, sizeof(buffer), 0, (sockaddr*)&from_addr, &len);
+    ssize_t n = recvfrom(sock, buffer, sizeof(buffer), 0,
+                         (sockaddr *) &from_addr, &len);
     std::string raw(buffer, n);
     return Packet::deserialize(raw);
 }
 
-std::string performHandshake(int sock, sockaddr_in& server_addr) {
+std::string performHandshake(int sock, sockaddr_in &server_addr)
+{
     // 傳送握手封包
     Packet syn = {100, 0, 1024, PacketType::SYN, "client"};
     sendPacket(sock, server_addr, syn);
@@ -42,7 +48,8 @@ std::string performHandshake(int sock, sockaddr_in& server_addr) {
     return "";
 }
 
-void handleExpression(int sock, sockaddr_in& server_addr) {
+void handleExpression(int sock, sockaddr_in &server_addr)
+{
     std::string expr;
     std::cout << "請輸入運算式（例如 3+5*2）：";
     std::getline(std::cin, expr);
@@ -58,11 +65,14 @@ void handleExpression(int sock, sockaddr_in& server_addr) {
     }
 }
 
-void handleFileRequest(int sock, sockaddr_in& server_addr, const std::string& client_id) {
+void handleFileRequest(int sock,
+                       sockaddr_in &server_addr,
+                       const std::string &client_id)
+{
     std::string filename;
     std::cout << "請輸入檔案名稱（例如 example.txt）：";
     std::getline(std::cin, filename);
-    
+
     Packet pkt = {102, 0, 1024, PacketType::FILE_REQ, filename};
     sendPacket(sock, server_addr, pkt);
 
@@ -84,17 +94,14 @@ void handleFileRequest(int sock, sockaddr_in& server_addr, const std::string& cl
         if (p.type == PacketType::FILE_DATA) {
             file_chunks.push_back(p.payload);
 
-            Packet ack = {
-                static_cast<uint32_t>(p.seq + static_cast<uint32_t>(p.payload.size())),
-                p.seq,
-                1024,
-                PacketType::DATA_ACK,
-                ""
-            };
+            Packet ack = {static_cast<uint32_t>(
+                              p.seq + static_cast<uint32_t>(p.payload.size())),
+                          p.seq, 1024, PacketType::DATA_ACK, ""};
             sendPacket(sock, server_addr, ack);
         }
 
-        if (std::chrono::steady_clock::now() - start > std::chrono::seconds(5)) {
+        if (std::chrono::steady_clock::now() - start >
+            std::chrono::seconds(5)) {
             std::cerr << "⚠️ 接收逾時，中斷傳輸。\n";
             break;
         }
@@ -106,7 +113,7 @@ void handleFileRequest(int sock, sockaddr_in& server_addr, const std::string& cl
 
     std::filesystem::path output_file = download_dir / filename;
     std::ofstream outfile(output_file);
-    for (const auto& chunk : file_chunks) {
+    for (const auto &chunk : file_chunks) {
         outfile << chunk << "\n";
     }
     outfile.close();
@@ -114,7 +121,8 @@ void handleFileRequest(int sock, sockaddr_in& server_addr, const std::string& cl
     std::cout << "✅ 檔案已儲存至：" << output_file << "\n";
 }
 
-int main() {
+int main()
+{
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     sockaddr_in server_addr = {AF_INET, htons(9000)};
     inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr);
@@ -143,14 +151,17 @@ int main() {
         std::cin >> choice;
         std::cin.ignore();
 
-        if (choice == 0) break;
-        else if (choice == 1) handleExpression(sock, server_addr);
-        else if (choice == 2) handleFileRequest(sock, server_addr, client_id);
-        else std::cout << "❌ 無效選項，請重新輸入。\n";
+        if (choice == 0)
+            break;
+        else if (choice == 1)
+            handleExpression(sock, server_addr);
+        else if (choice == 2)
+            handleFileRequest(sock, server_addr, client_id);
+        else
+            std::cout << "❌ 無效選項，請重新輸入。\n";
     }
 
     close(sock);
     std::cout << "👋 已離開 client。\n";
     return 0;
 }
-
