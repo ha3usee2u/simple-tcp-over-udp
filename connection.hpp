@@ -10,7 +10,7 @@ struct ConnectionState {
     std::chrono::steady_clock::time_point last_active;
     struct CongestionState {
         size_t cwnd = 1;
-        size_t ssthresh = 64;
+        size_t ssthresh = 512;
         size_t duplicateACKs = 0;
         bool inRecovery = false;
     };

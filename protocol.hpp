@@ -22,6 +22,7 @@ public:
                                        ConnectionState &state,
                                        int sockfd,
                                        const sockaddr_in &client_addr);
+    std::vector<Packet> collectAckPackets(int sockfd, size_t expected_ack_count);
 
 private:
     Packet makeErrorPacket(ConnectionState &state, const std::string &msg);
@@ -31,5 +32,6 @@ private:
     void sendPacket(int sockfd,
                     const Packet &pkt,
                     const sockaddr_in &client_addr);
-    bool receivePacket(int sockfd, Packet &pkt);
+    bool receivePacket(int sockfd, Packet &pkt, sockaddr_in *sender = nullptr);
+
 };

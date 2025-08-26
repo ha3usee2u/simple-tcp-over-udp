@@ -5,10 +5,13 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 
 class ExpressionParser
@@ -185,21 +188,70 @@ void Protocol::sendPacket(int sockfd,
                           const sockaddr_in &client_addr)
 {
     std::string raw = pkt.serialize();
-    sendto(sockfd, raw.c_str(), raw.size(), 0, (sockaddr *) &client_addr,
-           sizeof(client_addr));
+    ssize_t n = sendto(sockfd, raw.c_str(), raw.size(), 0,
+                       (sockaddr *) &client_addr, sizeof(client_addr));
+
+    char ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_addr.sin_addr), ip, INET_ADDRSTRLEN);
+    uint16_t port = ntohs(client_addr.sin_port);
+
+    if (n >= 0 && static_cast<size_t>(n) == raw.size()) {
+        std::cout << "📤 sendPacket 成功 → " << ip << ":" << port
+                  << " type=" << to_string(pkt.type)
+                  << " seq=" << pkt.seq << " ack=" << pkt.ack
+                  << " size=" << raw.size() << "\n";
+    } else {
+        std::cerr << "❌ sendPacket 失敗 → " << ip << ":" << port
+                  << " type=" << to_string(pkt.type)
+                  << " seq=" << pkt.seq << " ack=" << pkt.ack
+                  << " errno=" << strerror(errno)
+                  << " size=" << raw.size() << "\n";
+    }
 }
 
-bool Protocol::receivePacket(int sockfd, Packet &pkt)
-{
+bool Protocol::receivePacket(int sockfd, Packet &pkt, sockaddr_in *sender) {
     char buffer[4096];
     sockaddr_in from_addr;
     socklen_t len = sizeof(from_addr);
+
     ssize_t n = recvfrom(sockfd, buffer, sizeof(buffer), 0,
                          (sockaddr *) &from_addr, &len);
-    if (n <= 0)
+
+    if (n <= 0) {
+        std::cerr << "⚠️ receivePacket 失敗或 timeout → errno=" << strerror(errno) << "\n";
         return false;
+    }
+
     pkt = Packet::deserialize(std::string(buffer, n));
+
+    char ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(from_addr.sin_addr), ip, INET_ADDRSTRLEN);
+    uint16_t port = ntohs(from_addr.sin_port);
+
+    std::cout << "📥 receivePacket 成功 ← " << ip << ":" << port
+              << " type=" << to_string(pkt.type)
+              << " seq=" << pkt.seq << " ack=" << pkt.ack
+              << " size=" << n << "\n";
+
+    if (sender) {
+        *sender = from_addr;
+    }
+
     return true;
+}
+
+std::vector<Packet> Protocol::collectAckPackets(int sockfd, size_t expected_ack_count) {
+    std::vector<Packet> acks;
+    int max_attempts = 5;
+    for (int i = 0; i < max_attempts; ++i) {
+        Packet p;
+        if (receivePacket(sockfd, p) && p.type == PacketType::DATA_ACK) {
+            acks.push_back(p);
+        }
+        if (acks.size() >= expected_ack_count) break;
+        usleep(100000); // 100ms
+    }
+    return acks;
 }
 
 void Protocol::sendFileWithCongestionControl(const std::string &filename,
@@ -214,48 +266,119 @@ void Protocol::sendFileWithCongestionControl(const std::string &filename,
         return;
     }
 
+    struct timeval tv = {5, 0};
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
     size_t cwnd = 1;
     size_t ssthresh = 64;
     size_t flow_window = state.window_size;
-    std::string line;
-    std::vector<Packet> inFlight;
+    size_t duplicate_ack_count = 0;
+    uint32_t last_ack_seq = 0;
+    bool in_fast_recovery = false;
 
-    while (std::getline(file, line)) {
+    std::string line;
+    bool eof_reached = false;
+    std::vector<Packet> inFlight;
+    std::unordered_set<uint32_t> acked_seqs;
+
+    while (!eof_reached) {
         size_t send_limit = std::min(cwnd, flow_window);
-        for (size_t i = 0; i < send_limit && std::getline(file, line); ++i) {
+        size_t sent = 0;
+
+        while (sent < send_limit) {
+            if (!std::getline(file, line)) {
+                eof_reached = true;
+                break;
+            }
+
             Packet p = makeDataPacket(state, line);
             sendPacket(sockfd, p, client_addr);
+            std::cout << "📤 傳送封包 seq=" << p.seq << " cwnd=" << cwnd << "\n";
             inFlight.push_back(p);
+            sent++;
         }
 
-        // 等待 ACKs 並顯示 debug 資訊
+        std::vector<Packet> received_acks = collectAckPackets(sockfd, inFlight.size()); // ✅ 支援輪詢多次直到收滿 ACK
+        std::vector<Packet> unackedPackets;
+
         for (Packet &p : inFlight) {
-            std::cout << "📤 傳送封包 seq=" << p.seq << " cwnd=" << cwnd
-                      << "\n";
+            bool acked = false;
 
-            Packet ack;
+            for (const Packet &ack : received_acks) {
+                if (ack.seq == p.seq + 1) {
+                    acked_seqs.insert(ack.seq);
+                    state.client_seq = ack.seq;
+                    std::cout << "✅ ACK received for seq=" << p.seq << "\n";
+                    acked = true;
 
-            if (receivePacket(sockfd, ack) && ack.type == PacketType::ACK) {
-                std::cout << "✅ ACK received for seq=" << p.seq << "\n";
-                state.client_seq = ack.seq;
-            } else {
-                std::cout << "⚠️ Timeout or loss for seq=" << p.seq << "\n";
-                ssthresh = std::max(cwnd / 2, size_t(1));
-                cwnd = 1;
-                break;
+                    if (ack.seq == last_ack_seq) {
+                        duplicate_ack_count++;
+                        std::cout << "🔁 Duplicate ACK #" << duplicate_ack_count << "\n";
+                        if (duplicate_ack_count == 3 && !in_fast_recovery) {
+                            std::cout << "🚨 Fast Retransmit triggered for seq=" << p.seq << "\n";
+                            ssthresh = std::max(cwnd / 2, size_t(1));
+                            cwnd = ssthresh;
+                            in_fast_recovery = true;
+                            sendPacket(sockfd, p, client_addr);
+                        }
+                    } else {
+                        duplicate_ack_count = 0;
+                        last_ack_seq = ack.seq;
+                        cwnd = (cwnd < ssthresh) ? cwnd * 2 : cwnd + 1;
+                        std::cout << "📈 cwnd 成長為 " << cwnd << "（ssthresh=" << ssthresh << "）\n";
+                        if (in_fast_recovery) {
+                            std::cout << "🎯 Fast Recovery complete\n";
+                            in_fast_recovery = false;
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            if (!acked) {
+                if (acked_seqs.count(p.seq + 1) == 0) {
+                    std::cout << "⚠️ Timeout or loss for seq=" << p.seq << "\n";
+                    unackedPackets.push_back(p);
+
+                    ssthresh = std::max(cwnd / 2, size_t(1));
+                    cwnd = 1;
+                    std::cout << "📉 cwnd 退回至 1（ssthresh=" << ssthresh << "）\n";
+                    in_fast_recovery = false;
+                    duplicate_ack_count = 0;
+                } else {
+                    std::cout << "⏭️ 已 ACK，跳過重傳 seq=" << p.seq << "\n";
+                }
             }
         }
 
-
-        // 慢啟動或壅塞避免
-        if (cwnd < ssthresh)
-            cwnd *= 2;
-        else
-            cwnd += 1;
+        for (Packet &p : unackedPackets) {
+            std::cout << "🔁 重傳未 ACK 封包 seq=" << p.seq << "\n";
+            sendPacket(sockfd, p, client_addr);
+        }
 
         inFlight.clear();
     }
 
     Packet eof = makeEOFPacket(state);
     sendPacket(sockfd, eof, client_addr);
+    std::cout << "📤 傳送 FILE_END 給 client\n";
+
+    int attempts = 0;
+    while (attempts < 5) {
+        std::vector<Packet> acks = collectAckPackets(sockfd, 1); // 最多收 1 個 ACK
+        for (const Packet &ack : acks) {
+            if (ack.type == PacketType::DATA_ACK && ack.seq == eof.seq + 1) {
+                std::cout << "✅ FILE_END 被 ACK\n";
+                return;
+            }
+        }
+
+        std::cout << "🔁 重傳 FILE_END（第 " << attempts + 1 << " 次）\n";
+        sendPacket(sockfd, eof, client_addr);
+        attempts++;
+    }
+
+
+    std::cout << "❌ FILE_END 未被 ACK，傳輸可能不完整\n";
 }

@@ -96,6 +96,8 @@ int main()
             break;
 
         case PacketType::FILE_REQ: {
+            struct timeval tv = {5, 0}; // 5 秒 timeout
+            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
             protocol.sendFileWithCongestionControl(pkt.payload, state, sock,
                                                    client_addr);
             continue;
